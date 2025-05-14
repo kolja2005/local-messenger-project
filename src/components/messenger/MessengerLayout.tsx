@@ -1,7 +1,5 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import Icon from "@/components/ui/icon";
@@ -10,94 +8,196 @@ import ChatWindow from "@/components/messenger/ChatWindow";
 import UserSettings from "@/components/messenger/UserSettings";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import CreateChatDialog from "@/components/messenger/CreateChatDialog";
-import { mockedUsers, mockedChats, generateMessages } from "@/components/messenger/mockData";
+import { useAuth } from "@/contexts/AuthContext";
+import chatService from "@/api/chatService";
+import socketService from "@/api/socketService";
+import { toast } from "@/components/ui/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
-interface MessengerLayoutProps {
-  currentUser: any;
-  onLogout: () => void;
-}
-
-const MessengerLayout = ({ currentUser, onLogout }: MessengerLayoutProps) => {
+const MessengerLayout = () => {
+  const { user, logout } = useAuth();
   const [activeChat, setActiveChat] = useState<any>(null);
-  const [chats, setChats] = useState(mockedChats);
+  const [chats, setChats] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [userTyping, setUserTyping] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userTyping, setUserTyping] = useState<{
+    userId: string;
+    chatId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchChats = async () => {
+      try {
+        setIsLoading(true);
+        const chatList = await chatService.getChats();
+        setChats(chatList);
+      } catch (error) {
+        console.error("Ошибка при загрузке чатов:", error);
+        toast({
+          title: "Ошибка",
+          description: "Не удалось загрузить список чатов",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchChats();
+  }, []);
+
+  useEffect(() => {
+    socketService.connect().catch((error) => {
+      console.error("Ошибка подключения WebSocket:", error);
+    });
+
+    const handleNewMessage = (message: any) => {
+      if (activeChat && message.chat_id === activeChat.id) {
+        setMessages((prev) => [...prev, message]);
+      }
+      setChats((prev) => {
+        const updatedChats = [...prev];
+        const chatIndex = updatedChats.findIndex(
+          (c) => c.id === message.chat_id,
+        );
+        if (chatIndex !== -1) {
+          updatedChats[chatIndex] = {
+            ...updatedChats[chatIndex],
+            last_message: message,
+            unread_count:
+              activeChat?.id === message.chat_id
+                ? 0
+                : (updatedChats[chatIndex].unread_count || 0) + 1,
+          };
+          const updatedChat = updatedChats.splice(chatIndex, 1)[0];
+          updatedChats.unshift(updatedChat);
+        }
+        return updatedChats;
+      });
+    };
+
+    const handleTyping = (data: any) => {
+      if (data.user_id !== user?.id) {
+        setUserTyping(
+          data.is_typing
+            ? { userId: data.user_id, chatId: data.chat_id }
+            : null,
+        );
+      }
+    };
+
+    const handleUserStatus = (status: any) => {
+      setChats((prev) => {
+        return prev.map((chat) => {
+          const updatedParticipants = chat.members.map((member: any) => {
+            if (member.id === status.user_id) {
+              return {
+                ...member,
+                isOnline: status.status === "online",
+                last_seen: status.last_seen,
+              };
+            }
+            return member;
+          });
+          return {
+            ...chat,
+            members: updatedParticipants,
+          };
+        });
+      });
+    };
+
+    socketService.on("message", handleNewMessage);
+    socketService.on("typing", handleTyping);
+    socketService.on("status", handleUserStatus);
+
+    return () => {
+      socketService.off("message", handleNewMessage);
+      socketService.off("typing", handleTyping);
+      socketService.off("status", handleUserStatus);
+      socketService.disconnect();
+    };
+  }, [activeChat, user?.id]);
 
   useEffect(() => {
     if (activeChat) {
-      setMessages(generateMessages(activeChat.id, 15));
-      
-      // Имитация "печатает..." через 5 секунд
-      const typingTimeout = setTimeout(() => {
-        setUserTyping(true);
-        
-        // Прекращение печатания и новое сообщение через 3 секунды
-        const messageTimeout = setTimeout(() => {
-          setUserTyping(false);
-          setMessages(prev => [...prev, {
-            id: `auto-${Date.now()}`,
-            chatId: activeChat.id,
-            senderId: activeChat.participants[0].id,
-            text: "Привет! Как дела?",
-            timestamp: new Date(),
-            isRead: false
-          }]);
-        }, 3000);
-        
-        return () => clearTimeout(messageTimeout);
-      }, 5000);
-      
-      return () => clearTimeout(typingTimeout);
+      const fetchMessages = async () => {
+        try {
+          const result = await chatService.getMessages(activeChat.id);
+          setMessages(result.messages.reverse());
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat.id === activeChat.id ? { ...chat, unread_count: 0 } : chat,
+            ),
+          );
+        } catch (error) {
+          console.error("Ошибка при загрузке сообщений:", error);
+          toast({
+            title: "Ошибка",
+            description: "Не удалось загрузить сообщения",
+            variant: "destructive",
+          });
+        }
+      };
+      fetchMessages();
     }
   }, [activeChat]);
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (text: string) => {
     if (!activeChat || !text.trim()) return;
-    
-    const newMessage = {
-      id: `msg-${Date.now()}`,
-      chatId: activeChat.id,
-      senderId: currentUser.id,
-      text: text,
-      timestamp: new Date(),
-      isRead: false
-    };
-    
-    setMessages(prev => [...prev, newMessage]);
+    try {
+      const message = await chatService.sendMessage(activeChat.id, text);
+      setMessages((prev) => [...prev, message]);
+    } catch (error) {
+      console.error("Ошибка при отправке сообщения:", error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось отправить сообщение",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleCreateChat = (selectedUsers: string[]) => {
-    const newChatId = `chat-${Date.now()}`;
-    const participants = [
-      currentUser,
-      ...mockedUsers.filter(user => selectedUsers.includes(user.id))
-    ];
-    
-    const chatName = participants.length > 2 
-      ? `Групповой чат (${participants.length})`
-      : participants.find(p => p.id !== currentUser.id)?.displayName || "Новый чат";
-    
-    const newChat = {
-      id: newChatId,
-      name: chatName,
-      participants: participants,
-      lastMessage: null,
-      isGroup: participants.length > 2,
-      unreadCount: 0,
-      avatar: participants.length > 2 
-        ? null 
-        : participants.find(p => p.id !== currentUser.id)?.avatar
-    };
-    
-    setChats(prev => [newChat, ...prev]);
-    setActiveChat(newChat);
+  const handleCreateChat = async (selectedUsers: string[]) => {
+    try {
+      const newChat = await chatService.createChat({
+        member_ids: selectedUsers,
+      });
+      setChats((prev) => [newChat, ...prev]);
+      setActiveChat(newChat);
+      toast({ title: "Успешно", description: "Чат успешно создан" });
+    } catch (error) {
+      console.error("Ошибка при создании чата:", error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать чат",
+        variant: "destructive",
+      });
+    }
   };
 
-  const filteredChats = chats.filter(chat => 
-    chat.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleUpdateUser = async (updatedUser: any) => {
+    try {
+      setShowSettings(false);
+      toast({ title: "Успешно", description: "Профиль успешно обновлен" });
+    } catch (error) {
+      console.error("Ошибка при обновлении профиля:", error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обновить профиль",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredChats = chats.filter((chat) =>
+    chat.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  if (!user) return null;
 
   return (
     <div className="flex h-screen">
@@ -106,50 +206,43 @@ const MessengerLayout = ({ currentUser, onLogout }: MessengerLayoutProps) => {
         <div className="p-4 border-b flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={currentUser.avatar} />
-              <AvatarFallback>{currentUser.displayName[0]}</AvatarFallback>
+              <AvatarImage src={user?.avatar_path} />
+              <AvatarFallback>{user?.display_name?.[0]}</AvatarFallback>
             </Avatar>
-            <div className="font-medium">{currentUser.displayName}</div>
+            <div className="font-medium">{user?.display_name}</div>
           </div>
           <div className="flex gap-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowSettings(true)}
               title="Настройки профиля"
             >
               <Icon name="Settings" className="h-4 w-4" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={onLogout}
-              title="Выйти"
-            >
+            <Button variant="ghost" size="icon" onClick={logout} title="Выйти">
               <Icon name="LogOut" className="h-4 w-4" />
             </Button>
           </div>
         </div>
-        
+
         <div className="p-3">
           <div className="flex justify-between items-center mb-3">
             <h2 className="font-semibold">Чаты</h2>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" title="Создать чат">
-                  <Icon name="Plus" className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <CreateChatDialog 
-                  currentUser={currentUser} 
-                  onCreateChat={handleCreateChat} 
-                />
-              </DialogContent>
-            </Dialog>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Создать чат"
+              onClick={() => setShowCreateDialog(true)}
+            >
+              <Icon name="Plus" className="h-4 w-4" />
+            </Button>
           </div>
           <div className="relative mb-3">
-            <Icon name="Search" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Icon
+              name="Search"
+              className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+            />
             <Input
               placeholder="Поиск чатов"
               className="pl-9"
@@ -158,53 +251,66 @@ const MessengerLayout = ({ currentUser, onLogout }: MessengerLayoutProps) => {
             />
           </div>
         </div>
-        
+
         <div className="flex-1 overflow-auto">
-          <ChatList 
-            chats={filteredChats} 
-            activeChat={activeChat} 
-            onSelectChat={setActiveChat} 
-            currentUserId={currentUser.id}
+          <ChatList
+            chats={filteredChats}
+            activeChat={activeChat}
+            onSelectChat={setActiveChat}
+            currentUserId={user?.id}
+            isLoading={isLoading}
           />
         </div>
       </div>
-      
-      {/* Основное окно чата */}
+
+      {/* Основная область чата */}
       {activeChat ? (
-        <ChatWindow 
+        <ChatWindow
           chat={activeChat}
-          messages={messages}
           onSendMessage={handleSendMessage}
-          currentUser={currentUser}
-          userTyping={userTyping}
+          currentUser={user}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center p-4 bg-gray-50">
           <div className="text-center">
             <div className="flex justify-center mb-4">
-              <Icon name="MessageSquare" className="h-12 w-12 text-primary opacity-20" />
+              <Icon
+                name="MessageSquare"
+                className="h-12 w-12 text-primary opacity-20"
+              />
             </div>
-            <h3 className="text-xl font-medium text-gray-600 mb-2">Выберите чат</h3>
+            <h3 className="text-xl font-medium text-gray-600 mb-2">
+              Выберите чат
+            </h3>
             <p className="text-muted-foreground max-w-md">
-              Выберите существующий чат из списка слева или создайте новый, 
+              Выберите существующий чат из списка слева или создайте новый,
               нажав на иконку "+" вверху списка чатов
             </p>
           </div>
         </div>
       )}
-      
-      {/* Модальное окно настроек */}
+
+      {/* Модальные окна */}
       {showSettings && (
-        <UserSettings 
-          user={currentUser} 
-          onClose={() => setShowSettings(false)} 
+        <UserSettings
+          user={user}
+          onClose={() => setShowSettings(false)}
           onUpdate={(updatedUser) => {
-            // Здесь была бы логика обновления пользователя
-            // но для демо просто закрываем окно
+            // Обновление пользователя обрабатывается через AuthContext
             setShowSettings(false);
           }}
         />
       )}
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <CreateChatDialog
+            currentUser={user}
+            onCreateChat={handleCreateChat}
+            onCancel={() => setShowCreateDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

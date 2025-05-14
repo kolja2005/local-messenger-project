@@ -5,25 +5,54 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Icon from "@/components/ui/icon";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate, useLocation } from "react-router-dom";
+import { toast } from "@/components/ui/use-toast";
 
-interface LoginPageProps {
-  onLogin: (username: string, password: string) => void;
-}
-
-const LoginPage = ({ onLogin }: LoginPageProps) => {
+const LoginPage = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Определяем, куда перенаправить пользователя после входа
+  const from = (location.state as any)?.from?.pathname || "/";
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!username || !password) {
-      setError("Пожалуйста, введите имя пользователя и пароль");
+      toast({
+        title: "Ошибка",
+        description: "Пожалуйста, введите имя пользователя и пароль",
+        variant: "destructive",
+      });
       return;
     }
     
-    setError("");
-    onLogin(username, password);
+    try {
+      setIsLoading(true);
+      const user = await login(username, password);
+      
+      // Перенаправляем на целевую страницу или на страницу администратора для админов
+      if (user.is_admin) {
+        navigate("/admin");
+      } else {
+        navigate(from);
+      }
+      
+      toast({
+        title: "Успешный вход",
+        description: `Добро пожаловать, ${user.display_name}!`,
+      });
+    } catch (error) {
+      console.error('Ошибка входа:', error);
+      // Сообщение об ошибке уже отображается в AuthContext
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -53,6 +82,7 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
                     className="pl-9"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -67,20 +97,26 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
                     className="pl-9"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
                   />
                 </div>
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full">Войти</Button>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                    Вход...
+                  </span>
+                ) : (
+                  "Войти"
+                )}
+              </Button>
             </div>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2">
           <div className="text-xs text-muted-foreground text-center">
-            * Для демо используйте: admin / admin
-          </div>
-          <div className="text-xs text-muted-foreground text-center">
-            * Или любые имя/пароль для входа как обычный пользователь
+            * Для демо-версии используйте: admin / password
           </div>
         </CardFooter>
       </Card>

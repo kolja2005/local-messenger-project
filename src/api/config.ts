@@ -20,3 +20,6 @@ export const SOCKET_CONFIG = {
   RECONNECT_INTERVAL: 5000, // Интервал переподключения (5 секунд)
   MAX_RECONNECT_ATTEMPTS: 10, // Максимальное количество попыток переподключения
 };
+
+// Временные мок-данные (для разработки без бэкенда)
+export const USE_MOCK_DATA = true; // Установите в false для работы с реальным API

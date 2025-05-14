@@ -1,3 +1,4 @@
+
 import { useState, useRef } from "react";
 import {
   Dialog,
@@ -23,36 +24,38 @@ interface UserSettingsProps {
 
 const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
   const [form, setForm] = useState({
-    displayName: user.display_name || "",
-    avatar: user.avatar_path || "",
+    displayName: user.displayName,
+    avatar: user.avatar,
   });
 
-  const [tempAvatar, setTempAvatar] = useState(user.avatar_path || "");
+  const [tempAvatar, setTempAvatar] = useState(user.avatar);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customAvatarUrl, setCustomAvatarUrl] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { updateUser } = useAuth();
+  const { updateUser: updateAuthUser } = useAuth();
+
+  const predefinedAvatars = [
+    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=150&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?q=80&w=150&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=150&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=150&auto=format&fit=crop",
+  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setIsSubmitting(true);
-
-      const data: any = {
+      // Обновляем профиль пользователя через API
+      const updatedUser = await userService.updateProfile({
         display_name: form.displayName,
-      };
+      });
 
-      if (tempAvatar !== user.avatar_path) {
-        data.avatar_path = tempAvatar;
-      }
-
-      const updatedUser = await userService.updateProfile(data);
-
-      updateUser({
+      // Обновляем локальное состояние и контекст аутентификации
+      updateAuthUser({
         ...user,
         display_name: updatedUser.display_name,
-        avatar_path: updatedUser.avatar_path || user.avatar_path,
+        avatar_path: tempAvatar,
       });
 
       toast({
@@ -60,7 +63,6 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
         description: "Ваши изменения успешно сохранены",
       });
 
-      onUpdate(updatedUser);
       onClose();
     } catch (error) {
       console.error("Ошибка обновления профиля:", error);
@@ -69,8 +71,6 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
         description: "Не удалось обновить профиль",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -78,6 +78,7 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Проверка размера файла (максимум 5МБ)
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "Ошибка",
@@ -87,6 +88,7 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
       return;
     }
 
+    // Проверка типа файла
     if (!file.type.startsWith("image/")) {
       toast({
         title: "Ошибка",
@@ -97,15 +99,20 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
     }
 
     try {
+      // Показываем временное превью
       const imageUrl = URL.createObjectURL(file);
       setTempAvatar(imageUrl);
 
+      // Загружаем файл на сервер
       toast({
         title: "Загрузка...",
         description: "Пожалуйста, подождите",
       });
 
+      // Загрузка на сервер
       const uploadedUrl = await userService.uploadAvatar(file);
+
+      // Обновляем аватар на полученный с сервера URL
       setTempAvatar(uploadedUrl);
 
       toast({
@@ -137,8 +144,8 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
             <TabsTrigger value="avatar" className="flex-1">
               Аватар
             </TabsTrigger>
-            <TabsTrigger value="password" className="flex-1">
-              Пароль
+            <TabsTrigger value="notifications" className="flex-1">
+              Уведомления
             </TabsTrigger>
           </TabsList>
 
@@ -152,7 +159,6 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
                   onChange={(e) =>
                     setForm({ ...form, displayName: e.target.value })
                   }
-                  disabled={isSubmitting}
                 />
               </div>
 
@@ -176,17 +182,10 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
               </div>
 
               <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={isSubmitting}
-                >
+                <Button type="button" variant="outline" onClick={onClose}>
                   Отмена
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Сохранение..." : "Сохранить"}
-                </Button>
+                <Button type="submit">Сохранить</Button>
               </div>
             </form>
           </TabsContent>
@@ -196,14 +195,14 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
               <Avatar className="w-24 h-24">
                 <AvatarImage src={tempAvatar} />
                 <AvatarFallback className="text-2xl">
-                  {user.display_name?.[0]}
+                  {user.displayName[0]}
                 </AvatarFallback>
               </Avatar>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <h3 className="font-medium">Загрузить изображение</h3>
+                <h3 className="font-medium">Загрузить свое изображение</h3>
                 <div className="flex gap-2">
                   <Input
                     type="file"
@@ -217,7 +216,6 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
                     variant="outline"
                     className="w-full"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={isSubmitting}
                   >
                     <Icon name="Upload" className="mr-2 h-4 w-4" />
                     Выбрать файл
@@ -236,7 +234,6 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
                     placeholder="https://example.com/avatar.jpg"
                     value={customAvatarUrl}
                     onChange={(e) => setCustomAvatarUrl(e.target.value)}
-                    disabled={isSubmitting}
                   />
                   <Button
                     type="button"
@@ -244,143 +241,80 @@ const UserSettings = ({ user, onClose, onUpdate }: UserSettingsProps) => {
                     onClick={() => {
                       if (customAvatarUrl) {
                         setTempAvatar(customAvatarUrl);
+                        toast({
+                          title: "Аватар обновлен",
+                          description:
+                            "Нажмите 'Сохранить', чтобы применить изменения",
+                        });
                       }
                     }}
-                    disabled={!customAvatarUrl || isSubmitting}
                   >
                     <Icon name="Check" className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <h3 className="font-medium">Или выберите из галереи</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  {predefinedAvatars.map((avatar) => (
+                    <button
+                      key={avatar}
+                      type="button"
+                      className={`relative rounded-lg overflow-hidden border-2 p-1 ${
+                        tempAvatar === avatar
+                          ? "border-primary"
+                          : "border-transparent"
+                      }`}
+                      onClick={() => setTempAvatar(avatar)}
+                    >
+                      <img
+                        src={avatar}
+                        alt="Аватар"
+                        className="w-full aspect-square object-cover rounded"
+                      />
+                      {tempAvatar === avatar && (
+                        <div className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-1">
+                          <Icon name="Check" className="h-3 w-3" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
-              >
+              <Button type="button" variant="outline" onClick={onClose}>
                 Отмена
               </Button>
               <Button
                 type="button"
                 onClick={() => {
                   setForm({ ...form, avatar: tempAvatar });
-                  handleSubmit(new Event("submit") as any);
+                  onUpdate({
+                    ...user,
+                    avatar: tempAvatar,
+                  });
                 }}
-                disabled={isSubmitting || tempAvatar === user.avatar_path}
               >
-                {isSubmitting ? "Сохранение..." : "Сохранить"}
+                Сохранить
               </Button>
             </div>
           </TabsContent>
 
-          <TabsContent value="password" className="space-y-4 mt-4">
-            <form
-              className="space-y-4"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const currentPassword = formData.get(
-                  "currentPassword",
-                ) as string;
-                const newPassword = formData.get("newPassword") as string;
-                const confirmPassword = formData.get(
-                  "confirmPassword",
-                ) as string;
+          <TabsContent value="notifications" className="space-y-4 mt-4">
+            <div className="space-y-4">
+              <p className="text-muted-foreground">
+                Настройки уведомлений недоступны в демо-версии приложения.
+              </p>
 
-                if (!currentPassword || !newPassword || !confirmPassword) {
-                  toast({
-                    title: "Ошибка",
-                    description: "Заполните все поля",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-
-                if (newPassword !== confirmPassword) {
-                  toast({
-                    title: "Ошибка",
-                    description: "Новые пароли не совпадают",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-
-                try {
-                  setIsSubmitting(true);
-
-                  await userService.changePassword({
-                    current_password: currentPassword,
-                    new_password: newPassword,
-                  });
-
-                  toast({
-                    title: "Успешно",
-                    description: "Пароль успешно изменен",
-                  });
-
-                  onClose();
-                } catch (error) {
-                  console.error("Ошибка смены пароля:", error);
-                  toast({
-                    title: "Ошибка",
-                    description:
-                      "Не удалось изменить пароль. Проверьте текущий пароль.",
-                    variant: "destructive",
-                  });
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
-            >
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">Текущий пароль</Label>
-                <Input
-                  id="currentPassword"
-                  name="currentPassword"
-                  type="password"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">Новый пароль</Label>
-                <Input
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">
-                  Подтвердите новый пароль
-                </Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={isSubmitting}
-                >
-                  Отмена
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Сохранение..." : "Изменить пароль"}
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Закрыть
                 </Button>
               </div>
-            </form>
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,7 +22,6 @@ const MessengerLayout = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [userTyping, setUserTyping] = useState<{
     userId: string;
@@ -201,15 +201,14 @@ const MessengerLayout = () => {
 
   return (
     <div className="flex h-screen">
-      {/* Боковая панель с чатами */}
       <div className="w-80 flex flex-col border-r">
         <div className="p-4 border-b flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={user?.avatar_path} />
-              <AvatarFallback>{user?.display_name?.[0]}</AvatarFallback>
+              <AvatarImage src={user.avatar_path} />
+              <AvatarFallback>{user.display_name[0]}</AvatarFallback>
             </Avatar>
-            <div className="font-medium">{user?.display_name}</div>
+            <div className="font-medium">{user.display_name}</div>
           </div>
           <div className="flex gap-1">
             <Button
@@ -229,14 +228,19 @@ const MessengerLayout = () => {
         <div className="p-3">
           <div className="flex justify-between items-center mb-3">
             <h2 className="font-semibold">Чаты</h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              title="Создать чат"
-              onClick={() => setShowCreateDialog(true)}
-            >
-              <Icon name="Plus" className="h-4 w-4" />
-            </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" title="Создать чат">
+                  <Icon name="Plus" className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <CreateChatDialog
+                  currentUser={user}
+                  onCreateChat={handleCreateChat}
+                />
+              </DialogContent>
+            </Dialog>
           </div>
           <div className="relative mb-3">
             <Icon
@@ -253,22 +257,40 @@ const MessengerLayout = () => {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <ChatList
-            chats={filteredChats}
-            activeChat={activeChat}
-            onSelectChat={setActiveChat}
-            currentUserId={user?.id}
-            isLoading={isLoading}
-          />
+          {isLoading ? (
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-3">
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ChatList
+              chats={filteredChats}
+              activeChat={activeChat}
+              onSelectChat={setActiveChat}
+              currentUserId={user.id}
+            />
+          )}
         </div>
       </div>
 
-      {/* Основная область чата */}
       {activeChat ? (
         <ChatWindow
           chat={activeChat}
+          messages={messages}
           onSendMessage={handleSendMessage}
           currentUser={user}
+          userTyping={
+            userTyping && userTyping.chatId === activeChat.id
+              ? userTyping.userId
+              : null
+          }
         />
       ) : (
         <div className="flex-1 flex items-center justify-center p-4 bg-gray-50">
@@ -290,27 +312,13 @@ const MessengerLayout = () => {
         </div>
       )}
 
-      {/* Модальные окна */}
       {showSettings && (
         <UserSettings
           user={user}
           onClose={() => setShowSettings(false)}
-          onUpdate={(updatedUser) => {
-            // Обновление пользователя обрабатывается через AuthContext
-            setShowSettings(false);
-          }}
+          onUpdate={handleUpdateUser}
         />
       )}
-
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
-          <CreateChatDialog
-            currentUser={user}
-            onCreateChat={handleCreateChat}
-            onCancel={() => setShowCreateDialog(false)}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

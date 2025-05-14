@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isAdmin: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -46,7 +46,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     checkAuth();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string): Promise<User> => {
     setIsLoading(true);
     try {
       const userData = await authService.login(username, password);
@@ -82,7 +82,7 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }
     
     const updatedUser = { ...user, ...userData };
     setUser(updatedUser);
-    authService.updateUserData(updatedUser);
+    authService.updateUserData(updatedUser as User);
   };
 
   const isAdmin = user?.is_admin || false;

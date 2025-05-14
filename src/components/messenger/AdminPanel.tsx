@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+
+import { useState } from "react";
+import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -11,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
 import Icon from "@/components/ui/icon";
 import {
   Dialog,
@@ -136,39 +137,10 @@ const AdminPanel = () => {
     }
   };
 
-  const handleToggleUserStatus = async (userId: string, isActive: boolean) => {
-    try {
-      setIsLoading(true);
-      await userService.admin.toggleUserStatus(userId, !isActive);
-      setUsers((prevUsers) =>
-        prevUsers.map((user) =>
-          user.id === userId ? { ...user, is_active: !isActive } : user,
-        ),
-      );
-      toast({
-        title: isActive
-          ? "Пользователь деактивирован"
-          : "Пользователь активирован",
-        description: isActive
-          ? "Пользователь деактивирован"
-          : "Пользователь активирован",
-      });
-    } catch (error) {
-      console.error("Ошибка при изменении статуса пользователя:", error);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось изменить статус пользователя",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const filteredUsers = users.filter(
     (user) =>
       user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.display_name.toLowerCase().includes(searchQuery.toLowerCase()),
+      user.displayName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -308,87 +280,57 @@ const AdminPanel = () => {
                   <div className="col-span-2 text-right">Действия</div>
                 </div>
 
-                {isLoading ? (
-                  <div>
-                    {[...Array(5)].map((_, idx) => (
-                      <div
-                        key={idx}
-                        className="grid grid-cols-12 p-4 items-center border-b"
-                      >
-                        <Skeleton className="h-4 w-20 col-span-2" />
-                        <Skeleton className="h-4 w-24 col-span-2" />
-                        <Skeleton className="h-8 w-20 col-span-2 ml-auto" />
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map((user, index) => (
+                    <div
+                      key={user.id}
+                      className="grid grid-cols-12 p-4 items-center border-b"
+                    >
+                      <div className="col-span-1">{index + 1}</div>
+                      <div className="col-span-3 flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={user.avatar} />
+                          <AvatarFallback>{user.displayName[0]}</AvatarFallback>
+                        </Avatar>
+                        <span>{user.username}</span>
                       </div>
-                    ))}
-                  </div>
-                ) : filteredUsers.length > 0 ? (
-                  <>
-                    {filteredUsers.map((user, index) => (
-                      <div
-                        key={user.id}
-                        className="grid grid-cols-12 p-4 items-center border-b"
-                      >
-                        <div className="col-span-1">{index + 1}</div>
-                        <div className="col-span-3 flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={user.avatar_path} />
-                            <AvatarFallback>
-                              {user.display_name[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{user.username}</span>
-                        </div>
-                        <div className="col-span-2">{user.display_name}</div>
-                        <div className="col-span-2">
-                          <span
-                            className={`px-2 py-1 rounded text-xs ${
-                              user.is_active
-                                ? user.isOnline
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-blue-100 text-blue-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {!user.is_active
-                              ? "Деактивирован"
-                              : user.isOnline
-                                ? "Онлайн"
-                                : "Офлайн"}
-                          </span>
-                        </div>
-                        <div className="col-span-2">
-                          {user.isOnline
-                            ? "Сейчас"
-                            : formatLastSeen(user.last_seen)}
-                        </div>
-                        <div className="col-span-2 flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={
-                              user.is_active ? "Деактивировать" : "Активировать"
-                            }
-                            onClick={() =>
-                              handleToggleUserStatus(user.id, user.is_active)
-                            }
-                          >
-                            <Icon
-                              name={user.is_active ? "UserX" : "UserCheck"}
-                              className="h-4 w-4"
-                            />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Удалить пользователя"
-                            onClick={() => handleDeleteUser(user.id)}
-                          >
-                            <Icon name="Trash" className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      <div className="col-span-2">{user.displayName}</div>
+                      <div className="col-span-2">
+                        <span
+                          className={`px-2 py-1 rounded text-xs ${
+                            user.isOnline
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {user.isOnline ? "Онлайн" : "Офлайн"}
+                        </span>
                       </div>
-                    ))}
-                  </>
+                      <div className="col-span-2">
+                        {user.isOnline
+                          ? "Сейчас"
+                          : formatLastSeen(user.lastSeen)}
+                      </div>
+                      <div className="col-span-2 flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            /* handle edit */
+                          }}
+                        >
+                          <Icon name="Edit" className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          <Icon name="Trash" className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
                 ) : (
                   <div className="p-8 text-center text-muted-foreground">
                     Пользователи не найдены
@@ -413,7 +355,7 @@ const AdminPanel = () => {
                   name="MessageSquare"
                   className="mx-auto h-12 w-12 opacity-20 mb-4"
                 />
-                <p>В разработке</p>
+                <p>Управление чатами недоступно в демо-версии</p>
               </div>
             </CardContent>
           </Card>
@@ -435,7 +377,7 @@ const AdminPanel = () => {
                 <Label htmlFor="maxFileSize">
                   Максимальный размер файла (МБ)
                 </Label>
-                <Input id="maxFileSize" type="number" defaultValue="5" />
+                <Input id="maxFileSize" type="number" defaultValue="10" />
               </div>
 
               <div className="grid gap-2">
